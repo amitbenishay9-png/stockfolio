@@ -114,7 +114,7 @@ const SUPA_KEY = 'sb_publishable_KC7NEcDniqCxgJWFNJPo2A_xWeiSbFk';
 var sb, currentUser, portfolioId;
 
 // ── Rows state ──
-var rows = [{ticker:'',company:'',shares:'',avgCost:''}];
+var rows = [{ticker:'',shares:'',avgCost:''}];
 var uploadedStocks = [];
 var activeTab = 'manual';
 
@@ -143,10 +143,6 @@ var COMPANIES = {
 function onTickerInput(i, val) {
   val = val.toUpperCase();
   rows[i].ticker = val;
-  if(COMPANIES[val] && !rows[i].company) {
-    rows[i].company = COMPANIES[val];
-    renderRows();
-  }
 }
 
 function renderRows(){
@@ -159,7 +155,7 @@ function renderRows(){
     </div>
   `).join('');
 }
-function addRow(){ rows.push({ticker:'',company:'',shares:'',avgCost:''}); renderRows(); }
+function addRow(){ rows.push({ticker:'',shares:'',avgCost:''}); renderRows(); }
 function removeRow(i){ if(rows.length>1){rows.splice(i,1); renderRows();} }
 
 var rawRows = [];
