@@ -200,16 +200,16 @@ function showColumnMapper(){
   const grid = document.getElementById('mapper-grid');
   mapper.style.display='block';
   const fields = [
-    {id:'col-ticker',label:'Ticker / Symbol',hints:['tick','symbol','stock','security']},
-    {id:'col-action',label:'Action (Buy/Sell) — optional',hints:['action','type','side','transaction']},
-    {id:'col-shares',label:'Shares / Quantity',hints:['share','qty','quant','quantity','amount']},
-    {id:'col-price', label:'Price / Avg Cost',hints:['price','cost','avg','rate']},
-    {id:'col-date',  label:'Date (optional)', hints:['date','time','day']},
+    {id:'col-ticker',label:'Ticker / Symbol',hints:['tick','symbol','stock','security','position','name','asset']},
+    {id:'col-action',label:'Action (Buy/Sell) — optional',hints:['action','type','side','transaction','direction']},
+    {id:'col-shares',label:'Shares / Quantity',hints:['share','qty','quant','quantity','amount','unit','volume','num']},
+    {id:'col-price', label:'Price / Avg Cost',hints:['average','avg','price','cost','rate','paid']},
+    {id:'col-date',  label:'Date (optional)', hints:['date','time','day','when']},
   ];
   grid.innerHTML = fields.map(f=>{
     const best = fileHeaders.find(h=>f.hints.some(hint=>h.toLowerCase().includes(hint)))||'— skip —';
-    const opts = ['— skip —',...fileHeaders].map(h=>`<option value="${h}" ${h===best?'selected':''} >${h}</option>`).join('');
-    return `<div><div style="font-size:11px;color:#64748b;margin-bottom:4px">${f.label}</div><select id="${f.id}" onchange="updatePreview()" style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-family:inherit;font-size:13px;outline:none">${opts}</select></div>`;
+    const opts = ['— skip —',...fileHeaders].map(h=>`<option value="${h}" ${h===best?'selected':''} style="background:#1a2035;color:#e2e8f0">${h}</option>`).join('');
+    return `<div><div style="font-size:11px;color:#64748b;margin-bottom:4px">${f.label}</div><select id="${f.id}" onchange="updatePreview()" style="width:100%;padding:8px;background:#1a2035;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-family:inherit;font-size:13px;outline:none">${opts}</select></div>`;
   }).join('');
   updatePreview();
 }
