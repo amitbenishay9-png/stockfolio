@@ -180,6 +180,16 @@ function handleFile(input){
         }).filter(r=>Object.values(r).some(v=>v));
       } else {
         const wb = XLSX.read(e.target.result, {type:'array'});
+        // If multiple sheets, let user pick
+        if(wb.SheetNames.length > 1){
+          zone.innerHTML = `<div class="ob-upload-icon">📋</div><div class="ob-upload-text">Found ${wb.SheetNames.length} sheets — pick one:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center">
+            ${wb.SheetNames.map((name,i)=>`<button onclick="loadSheet(event,'${name.replace(/'/g,"\\'")}',window._wb)" 
+              style="padding:8px 16px;border-radius:8px;border:1px solid rgba(232,184,75,0.4);background:rgba(232,184,75,0.1);color:#e8b84b;cursor:pointer;font-family:inherit;font-size:13px">${name}</button>`).join('')}
+          </div>`;
+          window._wb = wb;
+          return;
+        }
         const ws = wb.Sheets[wb.SheetNames[0]];
         rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
         fileHeaders = rawRows.length ? Object.keys(rawRows[0]) : [];
@@ -193,6 +203,17 @@ function handleFile(input){
     }
   };
   file.name.endsWith('.csv') ? reader.readAsText(file) : reader.readAsArrayBuffer(file);
+}
+
+function loadSheet(e, sheetName, wb){
+  e.stopPropagation();
+  const ws = wb.Sheets[sheetName];
+  rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
+  fileHeaders = rawRows.length ? Object.keys(rawRows[0]) : [];
+  const zone = document.getElementById('upload-zone');
+  zone.innerHTML = `<div class="ob-upload-icon">✅</div><div class="ob-upload-text">Sheet: "${sheetName}" — ${rawRows.length} rows loaded</div>`;
+  zone.style.borderColor='rgba(74,222,128,0.4)';
+  showColumnMapper();
 }
 
 function showColumnMapper(){
