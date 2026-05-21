@@ -83,8 +83,18 @@
       <div class="ob-upload" onclick="document.getElementById('file-input').click()" id="upload-zone">
         <div class="ob-upload-icon">📂</div>
         <div class="ob-upload-text">Click to upload Excel or CSV file</div>
-        <div class="ob-upload-sub">Columns: Ticker · Shares · Avg Cost · Date (optional)</div>
+        <div class="ob-upload-sub">Any broker format — you'll map the columns next</div>
         <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this)">
+      </div>
+      <!-- Column mapper — shown after file upload -->
+      <div id="col-mapper" style="display:none;margin-top:16px">
+        <div style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:12px">Match your columns:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px" id="mapper-grid"></div>
+        <div style="font-size:12px;color:#475569;margin-bottom:4px" id="mapper-preview"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#94a3b8;margin-top:8px;cursor:pointer">
+          <input type="checkbox" id="is-trades" style="accent-color:#e8b84b"> 
+          This file has individual trades (Buy/Sell) — calculate positions automatically
+        </label>
       </div>
       <div id="upload-preview"></div>
     </div>
@@ -152,68 +162,103 @@ function renderRows(){
 function addRow(){ rows.push({ticker:'',company:'',shares:'',avgCost:''}); renderRows(); }
 function removeRow(i){ if(rows.length>1){rows.splice(i,1); renderRows();} }
 
+var rawRows = [];
+var fileHeaders = [];
+
 function handleFile(input){
   const file = input.files[0];
   if(!file) return;
   const zone = document.getElementById('upload-zone');
   zone.innerHTML = `<div class="ob-upload-icon">⏳</div><div class="ob-upload-text">Reading ${file.name}…</div>`;
-
   const reader = new FileReader();
   reader.onload = function(e){
     try {
-      var data;
       if(file.name.endsWith('.csv')){
-        // CSV parsing
-        const text = e.target.result;
-        const lines = text.split('\n').filter(l=>l.trim());
-        const headers = lines[0].toLowerCase().split(',').map(h=>h.trim().replace(/"/g,''));
-        const tickerIdx = headers.findIndex(h=>h.includes('tick'));
-        const sharesIdx = headers.findIndex(h=>h.includes('share')||h.includes('qty')||h.includes('quant'));
-        const costIdx   = headers.findIndex(h=>h.includes('cost')||h.includes('price')||h.includes('avg'));
-        data = lines.slice(1).map(l=>{
+        const lines = e.target.result.split('\n').filter(l=>l.trim());
+        fileHeaders = lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
+        rawRows = lines.slice(1).map(l=>{
           const cols = l.split(',').map(c=>c.trim().replace(/"/g,''));
-          return {
-            ticker: (cols[tickerIdx>=0?tickerIdx:0]||'').toUpperCase(),
-            shares: parseFloat(cols[sharesIdx>=0?sharesIdx:1])||0,
-            avgCost: parseFloat(cols[costIdx>=0?costIdx:2])||0
-          };
-        }).filter(s=>s.ticker && s.shares>0);
+          const row = {};
+          fileHeaders.forEach((h,i)=>row[h]=cols[i]||'');
+          return row;
+        }).filter(r=>Object.values(r).some(v=>v));
       } else {
-        // Excel parsing with SheetJS
         const wb = XLSX.read(e.target.result, {type:'array'});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(ws, {defval:''});
-        data = json.map(row=>{
-          const keys = Object.keys(row).map(k=>k.toLowerCase());
-          const get = (terms) => {
-            const key = Object.keys(row).find(k=>terms.some(t=>k.toLowerCase().includes(t)));
-            return key ? row[key] : '';
-          };
-          return {
-            ticker:  String(get(['tick','symbol','stock'])||'').toUpperCase().trim(),
-            shares:  parseFloat(get(['share','qty','quant','unit','amount']))||0,
-            avgCost: parseFloat(get(['cost','price','avg','average','paid']))||0
-          };
-        }).filter(s=>s.ticker && s.shares>0);
+        rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        fileHeaders = rawRows.length ? Object.keys(rawRows[0]) : [];
       }
-
-      uploadedStocks = data;
-      if(data.length > 0){
-        zone.innerHTML = `<div class="ob-upload-icon">✅</div><div class="ob-upload-text">${file.name}</div><div class="ob-upload-sub">Found ${data.length} stocks: ${data.slice(0,5).map(s=>s.ticker).join(', ')}${data.length>5?'...':''}</div>`;
-        zone.style.borderColor='rgba(74,222,128,0.4)';
-      } else {
-        zone.innerHTML = `<div class="ob-upload-icon">❌</div><div class="ob-upload-text">No stocks found</div><div class="ob-upload-sub">Make sure columns include: Ticker, Shares, Avg Cost</div>`;
-        zone.style.borderColor='rgba(248,113,113,0.4)';
-      }
+      if(!rawRows.length){ zone.innerHTML=`<div class="ob-upload-icon">❌</div><div class="ob-upload-text">No data found</div>`; return; }
+      zone.innerHTML = `<div class="ob-upload-icon">✅</div><div class="ob-upload-text">${file.name} — ${rawRows.length} rows</div>`;
+      zone.style.borderColor='rgba(74,222,128,0.4)';
+      showColumnMapper();
     } catch(err) {
-      zone.innerHTML = `<div class="ob-upload-icon">❌</div><div class="ob-upload-text">Error reading file: ${err.message}</div>`;
+      zone.innerHTML = `<div class="ob-upload-icon">❌</div><div class="ob-upload-text">Error: ${err.message}</div>`;
     }
   };
-  if(file.name.endsWith('.csv')){
-    reader.readAsText(file);
-  } else {
-    reader.readAsArrayBuffer(file);
+  file.name.endsWith('.csv') ? reader.readAsText(file) : reader.readAsArrayBuffer(file);
+}
+
+function showColumnMapper(){
+  const mapper = document.getElementById('col-mapper');
+  const grid = document.getElementById('mapper-grid');
+  mapper.style.display='block';
+  const fields = [
+    {id:'col-ticker',label:'Ticker / Symbol',hints:['tick','symbol','stock','security']},
+    {id:'col-action',label:'Action (Buy/Sell) — optional',hints:['action','type','side','transaction']},
+    {id:'col-shares',label:'Shares / Quantity',hints:['share','qty','quant','quantity','amount']},
+    {id:'col-price', label:'Price / Avg Cost',hints:['price','cost','avg','rate']},
+    {id:'col-date',  label:'Date (optional)', hints:['date','time','day']},
+  ];
+  grid.innerHTML = fields.map(f=>{
+    const best = fileHeaders.find(h=>f.hints.some(hint=>h.toLowerCase().includes(hint)))||'— skip —';
+    const opts = ['— skip —',...fileHeaders].map(h=>`<option value="${h}" ${h===best?'selected':''} >${h}</option>`).join('');
+    return `<div><div style="font-size:11px;color:#64748b;margin-bottom:4px">${f.label}</div><select id="${f.id}" onchange="updatePreview()" style="width:100%;padding:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-family:inherit;font-size:13px;outline:none">${opts}</select></div>`;
+  }).join('');
+  updatePreview();
+}
+
+function getMappedValue(row,colId){
+  const col=document.getElementById(colId)?.value;
+  return col&&col!=='— skip —'?(row[col]||''):'';
+}
+
+function updatePreview(){
+  if(!rawRows.length) return;
+  const sample=rawRows.slice(0,3).map(row=>{
+    const t=String(getMappedValue(row,'col-ticker')).toUpperCase().trim();
+    const s=parseFloat(getMappedValue(row,'col-shares'))||0;
+    const p=parseFloat(getMappedValue(row,'col-price'))||0;
+    return t?`${t} × ${s} @ $${p}`:null;
+  }).filter(Boolean);
+  const el=document.getElementById('mapper-preview');
+  if(el) el.textContent=sample.length?'Preview: '+sample.join(' | '):'';
+}
+
+function processExcelData(){
+  const isTrades=document.getElementById('is-trades')?.checked;
+  const rows=rawRows.map(row=>({
+    ticker:String(getMappedValue(row,'col-ticker')).toUpperCase().trim(),
+    action:String(getMappedValue(row,'col-action')).trim().toLowerCase(),
+    shares:parseFloat(getMappedValue(row,'col-shares'))||0,
+    price: parseFloat(getMappedValue(row,'col-price'))||0,
+    date:  String(getMappedValue(row,'col-date')).trim(),
+  })).filter(r=>r.ticker&&r.shares>0);
+  if(!rows.length) return [];
+  if(isTrades){
+    const pos={};
+    rows.forEach(r=>{
+      if(!pos[r.ticker]) pos[r.ticker]={ticker:r.ticker,shares:0,avgCost:0};
+      const p=pos[r.ticker];
+      if(r.action.includes('buy')||r.action===''||r.action==='b'){
+        const ns=p.shares+r.shares;
+        p.avgCost=(p.avgCost*p.shares+r.price*r.shares)/ns;
+        p.shares=ns;
+      } else if(r.action.includes('sell')||r.action==='s'){ p.shares-=r.shares; }
+    });
+    return Object.values(pos).filter(p=>p.shares>0.001).map(p=>({ticker:p.ticker,shares:Math.round(p.shares*1000)/1000,avgCost:Math.round(p.avgCost*100)/100}));
   }
+  return rows.map(r=>({ticker:r.ticker,shares:r.shares,avgCost:r.price}));
 }
 
 function showErr(msg){ const el=document.getElementById('ob-err'); el.textContent=msg; el.style.display='block'; }
@@ -231,8 +276,8 @@ async function savePortfolio(){
     }));
     if(!stocks.length){ showErr('Please add at least one stock with ticker and shares.'); btn.disabled=false; btn.textContent='Save & open my dashboard →'; return; }
   } else {
-    stocks = uploadedStocks;
-    if(!stocks.length){ showErr('Please upload a file first.'); btn.disabled=false; btn.textContent='Save & open my dashboard →'; return; }
+    stocks = processExcelData();
+    if(!stocks.length){ showErr('No stocks found. Please check your column mapping.'); btn.disabled=false; btn.textContent='Save & open my dashboard →'; return; }
   }
 
   // Build trades array from stocks (one buy per stock at avg cost)
